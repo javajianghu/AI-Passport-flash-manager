@@ -1,0 +1,51 @@
+name: ESP32Firmware
+options:
+  bundleIdPrefix: cn.folotoy
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+
+packages:
+  Defaults:
+    url: https://github.com/sindresorhus/Defaults.git
+    from: "8.0.0"
+
+targets:
+  ESP32Firmware:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    resources:
+      - path: Resources
+        excludes:
+          - "esptool_deps"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cn.folotoy.ESP32Firmware
+        INFOPLIST_FILE: Resources/Info.plist
+        PRODUCT_NAME: ESP32固件管理
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES
+        CODE_SIGN_ENTITLEMENTS: Resources/ESP32Firmware.entitlements
+    dependencies:
+      - package: Defaults
+      - sdk: WebKit.framework
+    entitlements:
+      path: Resources/ESP32Firmware.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+    postBuildScripts:
+      - name: "Copy esptool_deps to Resources"
+        script: |
+          mkdir -p "${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/esptool_deps"
+          cp -R "${SRCROOT}/Resources/esptool_deps/"* "${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/esptool_deps/"

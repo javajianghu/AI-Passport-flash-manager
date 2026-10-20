@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Xcode
+*.pbxuser
+!*.pbxproj
+*.perspectivev3
+*.perspective
+xcuserdata/
+*.xcworkspace
+!*.xcworkspace/contents.xcworkspacedata
+build/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.SwiftPackageManager/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/

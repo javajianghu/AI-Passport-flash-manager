@@ -26,8 +26,7 @@ from datetime import datetime
 from pathlib import Path
 
 # esptool 路径 (优先使用系统安装的)
-ESPTOOL_PATHS = [
-    "/Users/tang/miniconda3/bin/esptool",  # miniconda
+ESPTOOL_PATHS = [  # miniconda
     "/usr/local/bin/esptool",              # homebrew
     "/opt/homebrew/bin/esptool",           # homebrew ARM
     "esptool",                             # PATH 中的 esptool

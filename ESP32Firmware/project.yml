@@ -25,10 +25,15 @@ targets:
     platform: macOS
     sources:
       - path: Sources
-    resources:
+      # 资源必须挂在 sources 下并显式指定 buildPhase: resources，
+      # 否则 XcodeGen 不会生成 PBXResourcesBuildPhase，
+      # Assets.xcassets 就不会被编译进 App（表现为应用没有图标）。
       - path: Resources
+        buildPhase: resources
         excludes:
           - "esptool_deps"
+          - "Info.plist"
+          - "ESP32Firmware.entitlements"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cn.folotoy.ESP32Firmware

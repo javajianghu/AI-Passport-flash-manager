@@ -21,6 +21,7 @@
 		BB3950D40A02B3AAEE176AC8 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C5B41F1B48E3255D623729F5 /* WebKit.framework */; };
 		BDC40EA7412C1466C2A9C8F6 /* Defaults in Frameworks */ = {isa = PBXBuildFile; productRef = A60E0885A73998C1F275C444 /* Defaults */; };
 		D1C8DAFEA66B4F75D7A9E629 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E2920739881D9AEEBEE5FE7 /* SettingsViewModel.swift */; };
+		E040352BE27361B5F9D60B9A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C77B6792AAEB877E03519D47 /* Assets.xcassets */; };
 		E92ADC7132185C6124C2FCAD /* FirmwareManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D3CCC77D86C832C4B21B7B /* FirmwareManagerView.swift */; };
 		E933A03023C2E361223563D1 /* DeviceInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CFA4A467EBF6D7A02FEBB14 /* DeviceInfo.swift */; };
 		F1764363F5ED35D7C43C5168 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C4040CF917CBD91D521607B /* AppSettings.swift */; };
@@ -42,6 +43,7 @@
 		ACBA02C7871DBE8CBDFF58EE /* Firmware.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Firmware.swift; sourceTree = "<group>"; };
 		B1DF354C68F627E01C4AA631 /* DeviceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceViewModel.swift; sourceTree = "<group>"; };
 		C5B41F1B48E3255D623729F5 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		C77B6792AAEB877E03519D47 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		EB037B2B271DD7AE49B5E938 /* FirmwareListItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirmwareListItem.swift; sourceTree = "<group>"; };
 		F950089EBF9029E3E21208D9 /* ESP32FirmwareApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESP32FirmwareApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -101,10 +103,19 @@
 		4D644B5976C91DDA53AB50E4 = {
 			isa = PBXGroup;
 			children = (
+				5D4139B120A5E1EDBD8D23A3 /* Resources */,
 				763C7E8E6C73632620770AE9 /* Sources */,
 				6E864318955444D42072C5C8 /* Frameworks */,
 				1E03CC2813A5E3F152DFD32B /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		5D4139B120A5E1EDBD8D23A3 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				C77B6792AAEB877E03519D47 /* Assets.xcassets */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		6E864318955444D42072C5C8 /* Frameworks */ = {
@@ -162,6 +173,7 @@
 			buildConfigurationList = 842205125AB7BFB032663A4B /* Build configuration list for PBXNativeTarget "ESP32Firmware" */;
 			buildPhases = (
 				4640EDA6A7A88E1CFBC1FA3A /* Sources */,
+				8EA5DCEE2463BBD23F1754EB /* Resources */,
 				A7B330029CD08EE5F34C3E7F /* Frameworks */,
 				E77637B6E168D4D8EC9B4E7D /* Copy esptool_deps to Resources */,
 			);
@@ -213,6 +225,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8EA5DCEE2463BBD23F1754EB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E040352BE27361B5F9D60B9A /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		E77637B6E168D4D8EC9B4E7D /* Copy esptool_deps to Resources */ = {

@@ -1,3 +1,5 @@
+
+from __future__ import annotations
 from .esp32 import ESP32ROM
 from .esp32c2 import ESP32C2ROM
 from .esp32c3 import ESP32C3ROM

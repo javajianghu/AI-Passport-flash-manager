@@ -83,22 +83,25 @@ class FirmwareManagerViewModel: ObservableObject {
         showImportConfirm = false
 
         do {
-            // 如果需要先备份
-            if skipBackup && device.deviceInfo.macAddress != "Unknown" {
-                successMessage = "正在备份当前固件..."
-                _ = try await espToolService.exportFirmware(
-                    port: device.deviceInfo.port,
+            // 备份与写入交给 ESPToolService 在同一次设备独占内完成：
+            // 若分两步执行，中间会放开端口，后台轮询可能插进来执行
+            // flash-id，而 flash-id 会触发 ESP32 复位，打断随后的写入。
+            let backup: FirmwareBackup? = (skipBackup && device.deviceInfo.macAddress != "Unknown")
+                ? FirmwareBackup(
                     macAddress: device.deviceInfo.macAddress,
                     outputDirectory: backupDirectory
                 )
-                loadFirmwares()
-            }
+                : nil
 
-            successMessage = "正在写入固件..."
+            successMessage = backup != nil ? "正在备份当前固件..." : "正在写入固件..."
+
             try await espToolService.importFirmware(
                 port: device.deviceInfo.port,
-                firmwarePath: firmware.path
+                firmwarePath: firmware.path,
+                backup: backup
             )
+
+            loadFirmwares()
             successMessage = "固件导入成功"
         } catch {
             errorMessage = error.localizedDescription

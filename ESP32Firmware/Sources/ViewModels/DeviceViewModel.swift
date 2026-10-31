@@ -41,6 +41,10 @@ class DeviceViewModel: ObservableObject {
                 do {
                     deviceInfo = try await espToolService.readDeviceInfo(port: port)
                     errorMessage = nil
+                } catch ESPToolError.deviceBusy {
+                    // 端口正被导出/导入占用，后台轮询应安静让路，
+                    // 不能打扰用户。设备信息保持原样，下次轮询会重试。
+                    return
                 } catch {
                     // 读取失败时保留之前的设备信息，避免频繁触发重启
                     if deviceInfo.port.isEmpty {
@@ -67,6 +71,8 @@ class DeviceViewModel: ObservableObject {
             do {
                 deviceInfo = try await espToolService.readDeviceInfo(port: port)
                 errorMessage = nil
+            } catch ESPToolError.deviceBusy {
+                errorMessage = ESPToolError.deviceBusy.errorDescription
             } catch {
                 deviceInfo = .disconnected
                 errorMessage = error.localizedDescription

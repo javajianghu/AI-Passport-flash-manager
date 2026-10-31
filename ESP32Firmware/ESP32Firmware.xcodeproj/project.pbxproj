@@ -254,7 +254,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "mkdir -p \"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/esptool_deps\"\ncp -R \"${SRCROOT}/Resources/esptool_deps/\"* \"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/esptool_deps/\"\n";
+			shellScript = "DEST=\"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/esptool_deps\"\nmkdir -p \"$DEST\"\n# 排除 __pycache__ 与 .pyc：vendored 依赖源码树里带有编译缓存，\n# 体积大且无用（不同 Python 版本之间也不通用）。\nrsync -a --exclude '__pycache__' --exclude '*.pyc' \\\n  \"${SRCROOT}/Resources/esptool_deps/\" \"$DEST/\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

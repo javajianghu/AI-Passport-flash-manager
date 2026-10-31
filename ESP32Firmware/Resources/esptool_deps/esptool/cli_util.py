@@ -1,3 +1,5 @@
+
+from __future__ import annotations
 # SPDX-FileCopyrightText: 2025 Espressif Systems (Shanghai) CO LTD
 #
 # SPDX-License-Identifier: GPL-2.0-or-later

@@ -1,4 +1,4 @@
-#!/Users/tang/miniconda3/bin/python3.13
+#!/usr/bin/env python3
 #
 # SPDX-FileCopyrightText: 2014-2022 Fredrik Ahlberg, Angus Gratton,
 # Espressif Systems (Shanghai) CO LTD, other contributors as noted.

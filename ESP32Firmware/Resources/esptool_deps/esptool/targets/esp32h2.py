@@ -1,3 +1,5 @@
+
+from __future__ import annotations
 # SPDX-FileCopyrightText: 2024-2025 Fredrik Ahlberg, Angus Gratton,
 # Espressif Systems (Shanghai) CO LTD, other contributors as noted.
 #

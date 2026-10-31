@@ -25,6 +25,7 @@ struct FirmwareManagerView: View {
                             FirmwareListItem(
                                 firmware: firmware,
                                 isConnected: deviceViewModel.isConnected,
+                                isBusy: viewModel.isExporting || viewModel.isImporting,
                                 onImport: {
                                     viewModel.prepareImport(firmware)
                                 },
@@ -56,12 +57,19 @@ struct FirmwareManagerView: View {
                     Label("导出当前固件", systemImage: "arrow.up.to.line")
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!deviceViewModel.isConnected || viewModel.isExporting)
+                // 导入期间同样要禁用：串口同一时刻只能被一个 esptool 进程独占，
+                // 两个进程抢同一个端口会失败并报 "port is busy"。
+                .disabled(!deviceViewModel.isConnected || viewModel.isExporting || viewModel.isImporting)
 
                 if viewModel.isExporting {
                     ProgressView()
                         .scaleEffect(0.8)
                     Text("导出中...")
+                        .foregroundColor(.secondary)
+                } else if viewModel.isImporting {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("导入中...")
                         .foregroundColor(.secondary)
                 }
             }

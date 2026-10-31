@@ -17,23 +17,50 @@ Options:
 """
 
 import argparse
+import errno
+import fcntl
 import os
 import sys
 import subprocess
 import re
-import glob
+from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
 
 # esptool 路径 (优先使用系统安装的)
-ESPTOOL_PATHS = [  # miniconda
-    "/usr/local/bin/esptool",              # homebrew
-    "/opt/homebrew/bin/esptool",           # homebrew ARM
-    "esptool",                             # PATH 中的 esptool
+ESPTOOL_PATHS = [
+    os.path.expanduser("~/miniconda3/bin/esptool"),  # miniconda 默认安装路径
+    "/usr/local/bin/esptool",                        # Homebrew (Intel Mac) 或手动安装
+    "/opt/homebrew/bin/esptool",                     # Homebrew (Apple Silicon)
+    "esptool",                                       # PATH 中的 esptool
 ]
 
 # 默认固件大小 (8MB for ESP32-C3)
 DEFAULT_FLASH_SIZE = 0x800000
+
+# 设备独占锁目录。
+#
+# ESP32 串口同一时刻只能被一个 esptool 进程独占。两个进程同时打开同一端口，
+# 后一个会在 pyserial 的独占锁上失败，报：
+#   "Could not exclusively lock port ...: [Errno 35] Resource temporarily unavailable"
+#
+# Swift App 与本 CLI 是两个独立进程，进程内互斥管不到对方，
+# 因此双方共用同一把基于文件锁（flock）的跨进程锁。
+LOCK_DIR = os.path.expanduser(
+    "~/Library/Caches/cn.folotoy.ESP32Firmware/locks"
+)
+
+# esptool 输出解析用的正则。
+#
+# esptool 5.x 用冒号加空格对齐输出，例如：
+#   "Chip type:          ESP32-C3 (QFN32) (revision v1.1)"
+#   "Detected flash size: 8MB"
+#   "MAC:                4c:11:ae:30:86:64"
+CHIP_TYPE_RE = re.compile(r"Chip type:\s*(.+?)(?:\s*\(|$)")
+# flash 容量行前缀是 "Detected flash size:"，不是 "Flash size:"
+# （后者只出现在 image-info 输出里）。
+FLASH_SIZE_RE = re.compile(r"Detected flash size:\s*(\d+)\s*([A-Za-z]+)")
+# MAC 必须匹配行首，避免 "BASE MAC:" / "MAC_EXT:" 误匹配。
+MAC_RE = re.compile(r"^MAC:\s*([0-9a-fA-F:]+)")
 
 
 def find_esptool():
@@ -66,14 +93,69 @@ def find_connected_devices():
     return sorted(devices)
 
 
+class DeviceBusyError(Exception):
+    """设备正被其它进程占用"""
+
+
+def _lock_path_for_port(port):
+    """按端口生成锁文件名。
+
+    端口名形如 /dev/cu.usbmodem2101，取其中的设备标识部分，
+    避免不同端口之间互相阻塞（同一设备换端口号是常见的）。
+    """
+    device = os.path.basename(port).replace("/", "_")
+    return os.path.join(LOCK_DIR, f"{device}.lock")
+
+
+@contextmanager
+def device_lock(port):
+    """获取指定端口的设备独占锁。
+
+    与 Swift App 共用同一把锁（flock），因此 CLI 与 App 之间也能互斥。
+    采用非阻塞加锁：拿不到立刻抛 DeviceBusyError，
+    而不是让 pyserial 报 "[Errno 35] Resource temporarily unavailable"。
+    """
+    os.makedirs(LOCK_DIR, exist_ok=True)
+    lock_path = _lock_path_for_port(port)
+
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            if exc.errno in (errno.EACCES, errno.EAGAIN):
+                raise DeviceBusyError(
+                    f"设备正忙（{port}），可能正在被固件管理 App 或另一个 CLI 进程使用"
+                )
+            raise
+
+        # 写入占用者信息，便于排查是谁占着设备
+        try:
+            os.ftruncate(fd, 0)
+            os.write(fd, f"pid={os.getpid()}\n".encode("utf-8"))
+        except OSError:
+            pass
+
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(fd)
+
+
 def get_device_info(port):
-    """获取设备信息"""
+    """获取设备信息
+
+    注意：调用方需自行持有设备独占锁（见 device_lock）。
+    """
     esptool = find_esptool()
 
     try:
         # 读取 flash_id
         result = subprocess.run(
-            [esptool, "--port", port, "flash_id"],
+            [esptool, "--port", port, "flash-id"],
             capture_output=True,
             text=True,
             timeout=10
@@ -88,18 +170,21 @@ def get_device_info(port):
 
         if result.returncode == 0:
             for line in result.stdout.split("\n"):
-                if "Chip type:" in line:
-                    match = re.search(r"Chip type:\s*(.+?)(?:\s*\(|$)", line)
-                    if match:
-                        info["chip_type"] = match.group(1).strip()
-                elif "Flash size:" in line:
-                    match = re.search(r"Flash size:\s*(\d+[A-Z]+)", line)
-                    if match:
-                        info["flash_size"] = match.group(1).strip()
+                chip_match = CHIP_TYPE_RE.search(line)
+                if chip_match:
+                    info["chip_type"] = chip_match.group(1).strip()
+                    continue
+
+                # esptool 5.x 的 flash-id 输出形如 "Detected flash size: 8MB"，
+                # 注意前缀是 "Detected flash size:" 而非 "Flash size:"——
+                # 后者只出现在 image-info 输出里。用错前缀会导致容量永远 Unknown。
+                size_match = FLASH_SIZE_RE.search(line)
+                if size_match:
+                    info["flash_size"] = f"{size_match.group(1)}{size_match.group(2)}"
 
         # 读取 MAC 地址
         mac_result = subprocess.run(
-            [esptool, "--port", port, "read_mac"],
+            [esptool, "--port", port, "read-mac"],
             capture_output=True,
             text=True,
             timeout=10
@@ -107,10 +192,12 @@ def get_device_info(port):
 
         if mac_result.returncode == 0:
             for line in mac_result.stdout.split("\n"):
-                if "MAC:" in line:
-                    match = re.search(r"MAC:\s*([0-9a-f:]+)", line)
-                    if match:
-                        info["mac_address"] = match.group(1).strip()
+                # read-mac 会输出 MAC / BASE MAC / MAC_EXT 三行，只取行首的 "MAC:"，
+                # 否则 "BASE MAC:" 会误匹配。
+                mac_match = MAC_RE.match(line)
+                if mac_match:
+                    info["mac_address"] = mac_match.group(1).strip()
+                    break
 
         return info
 
@@ -125,6 +212,19 @@ def get_device_info(port):
 def export_firmware(port, output_dir, skip_confirm=False):
     """导出固件到指定目录"""
     esptool = find_esptool()
+
+    try:
+        # 整段流程（读设备信息 + 读 flash）都持锁，
+        # 中途放开会让另一个 esptool 进程插进来抢同一个串口。
+        with device_lock(port):
+            return _export_firmware_locked(esptool, port, output_dir, skip_confirm)
+    except DeviceBusyError as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return False
+
+
+def _export_firmware_locked(esptool, port, output_dir, skip_confirm):
+    """导出固件（调用方需持有设备独占锁）"""
 
     # 获取设备信息
     print(f"正在连接设备 {port}...")
@@ -161,7 +261,7 @@ def export_firmware(port, output_dir, skip_confirm=False):
 
     try:
         result = subprocess.run(
-            [esptool, "--port", port, "read_flash", "0x0", hex(DEFAULT_FLASH_SIZE), output_path],
+            [esptool, "--port", port, "read-flash", "0x0", hex(DEFAULT_FLASH_SIZE), output_path],
             capture_output=True,
             text=True
         )
@@ -199,6 +299,18 @@ def import_firmware(port, firmware_path, skip_confirm=False):
         print(f"错误: 固件文件不存在: {firmware_path}", file=sys.stderr)
         return False
 
+    try:
+        # 整段流程（读设备信息 + 写 flash）都持锁
+        with device_lock(port):
+            return _import_firmware_locked(esptool, port, firmware_path, skip_confirm)
+    except DeviceBusyError as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return False
+
+
+def _import_firmware_locked(esptool, port, firmware_path, skip_confirm):
+    """导入固件（调用方需持有设备独占锁）"""
+
     # 获取设备信息
     print(f"正在连接设备 {port}...")
     device_info = get_device_info(port)
@@ -227,7 +339,7 @@ def import_firmware(port, firmware_path, skip_confirm=False):
 
     try:
         result = subprocess.run(
-            [esptool, "--port", port, "write_flash", "0x0", firmware_path],
+            [esptool, "--port", port, "write-flash", "0x0", firmware_path],
             capture_output=True,
             text=True
         )
@@ -259,7 +371,16 @@ def list_devices():
     print(f"检测到 {len(devices)} 个设备:\n")
 
     for port in devices:
-        info = get_device_info(port)
+        # list 同样要开 esptool 进程读设备信息，必须持锁，
+        # 否则与导出/导入撞车时用户会看到 "port is busy"。
+        try:
+            with device_lock(port):
+                info = get_device_info(port)
+        except DeviceBusyError as exc:
+            print(f"端口: {port} ({exc})")
+            print()
+            continue
+
         if info:
             print(f"端口: {port}")
             print(f"  芯片: {info['chip_type']}")

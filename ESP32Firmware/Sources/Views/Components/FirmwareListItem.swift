@@ -3,6 +3,10 @@ import SwiftUI
 struct FirmwareListItem: View {
     let firmware: Firmware
     let isConnected: Bool
+    /// 设备是否正被其它操作占用（导出/导入/读取设备信息）。
+    /// 串口同一时刻只能被一个 esptool 进程独占，占用期间禁用导入按钮，
+    /// 避免用户连点造成两个进程抢同一个端口。
+    let isBusy: Bool
     let onImport: () -> Void
     let onDelete: () -> Void
     let onRename: () -> Void
@@ -55,7 +59,7 @@ struct FirmwareListItem: View {
                     Label("导入", systemImage: "arrow.down.to.line")
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!isConnected)
+                .disabled(!isConnected || isBusy)
 
                 Button(action: onDelete) {
                     Label("删除", systemImage: "trash")

@@ -90,6 +90,17 @@ python3 esp32_firmware_cli.py import ./firmware.bin -p /dev/cu.usbmodem101 -y
 - homebrew 安装路径
 - 系统 PATH 中的 esptool
 
+### 设备独占
+
+ESP32 串口同一时刻只能被一个 esptool 进程独占。App 与命令行工具共用同一把跨进程锁
+（`~/Library/Caches/cn.folotoy.ESP32Firmware/locks/`），因此：
+
+- App 正在导出/导入时，命令行工具会提示「设备正忙」并退出，不会破坏正在进行的操作；
+- 命令行工具正在操作时，App 的按钮会自动禁用；
+- 导入前的备份与固件写入在同一次独占内完成，中途不会被其它进程插入。
+
+App 与 CLI 同时操作同一台设备是安全的，无需手动协调。
+
 ### 固件广场
 
 访问固件广场下载其他固件版本（需要设备连接）。

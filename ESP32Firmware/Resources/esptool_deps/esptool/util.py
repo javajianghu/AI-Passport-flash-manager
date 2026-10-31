@@ -7,12 +7,12 @@ from __future__ import annotations
 import os
 import re
 import struct
-from typing import IO, TypeAlias
+from typing import IO, Union
 
 from esp_pylib.errors import FatalError as _PylibFatalError
 
 # Define a custom type for the input
-ImageSource: TypeAlias = str | bytes | IO[bytes]
+ImageSource = Union[str, bytes, IO[bytes]]
 
 # Chips that implement the Secure Debug Controller (SDC). Append new target
 # names here as SDC support is added on additional chips.

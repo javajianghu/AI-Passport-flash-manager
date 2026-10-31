@@ -52,5 +52,9 @@ targets:
     postBuildScripts:
       - name: "Copy esptool_deps to Resources"
         script: |
-          mkdir -p "${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/esptool_deps"
-          cp -R "${SRCROOT}/Resources/esptool_deps/"* "${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/esptool_deps/"
+          DEST="${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/esptool_deps"
+          mkdir -p "$DEST"
+          # 排除 __pycache__ 与 .pyc：vendored 依赖源码树里带有编译缓存，
+          # 体积大且无用（不同 Python 版本之间也不通用）。
+          rsync -a --exclude '__pycache__' --exclude '*.pyc' \
+            "${SRCROOT}/Resources/esptool_deps/" "$DEST/"

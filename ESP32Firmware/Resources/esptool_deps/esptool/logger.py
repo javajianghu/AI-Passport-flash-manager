@@ -25,6 +25,8 @@ helpers such as `die` and `progress`.
 that reads ``EspLog.instance``) after installing `EsptoolLogger`.
 """
 
+
+from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 

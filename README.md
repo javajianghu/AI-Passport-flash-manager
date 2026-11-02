@@ -2,6 +2,14 @@
 
 一款 macOS 原生应用，用于 ESP32-C3 设备的固件导出、导入和备份管理。
 
+## 三种使用方式
+
+| 方式 | 文件 | 适用场景 | 依赖 |
+|------|------|----------|------|
+| **macOS 应用** (SwiftUI) | `ESP32Firmware/` | 日常图形界面操作 | macOS 13+、Xcode 编译 |
+| **Python 命令行** | `esp32_firmware_cli.py` | 自动化脚本、远程操作 | Python 3、esptool |
+| **网页版** (Web Serial) | `esp32_firmware_web.html` | 免安装，浏览器直接刷写 | Chrome/Edge（支持 Web Serial） |
+
 ## 功能特性
 
 - **固件导出**: 读取设备完整固件（按探测到的实际 flash 容量，默认 8MB）并保存为镜像文件

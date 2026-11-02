@@ -352,6 +352,58 @@ class ESPToolService: ObservableObject {
 
     // MARK: - 固件读写
 
+    /// 探测设备真实 flash 容量（字节）。调用方必须已持有设备独占。
+    ///
+    /// 之前导出固定读 8MB：小容量设备上超出部分地址回卷，导出的“8MB”后半段
+    /// 是无效数据，回写时还会触发 esptool 的 "doesn't fit in the available flash"。
+    private func detectFlashSizeBytes(port: String) async -> Int64? {
+        let result = try? await runCommand(
+            ["--port", port, "flash-id"],
+            timeout: infoTimeout
+        )
+        guard let result, result.exitCode == 0 else { return nil }
+        for line in result.stdout.components(separatedBy: "\n") {
+            if let value = valueAfterColon(in: line, label: "Detected flash size"),
+               let bytes = flashSizeBytes(from: value) {
+                return bytes
+            }
+        }
+        return nil
+    }
+
+    /// 固件文件超出设备 flash 容量时：超出部分全为 0xFF（擦除态）则截断，
+    /// 返回截断后的临时文件路径；否则返回 nil（调用方应拒绝写入）。
+    /// 文件未超容量时原样返回传入路径。
+    private func trimFirmwareIfNeeded(
+        firmwarePath: String,
+        fileManager: FileManager,
+        flashBytes: Int64
+    ) throws -> String? {
+        let attrs = try fileManager.attributesOfItem(atPath: firmwarePath)
+        let fileSize = attrs[.size] as? Int64 ?? 0
+        guard fileSize > flashBytes else { return firmwarePath }
+
+        let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: firmwarePath))
+        defer { try? handle.closeFile() }
+        try handle.seek(toOffset: UInt64(flashBytes))
+        var tailErased = true
+        while let chunk = try handle.read(upToCount: 65536), !chunk.isEmpty {
+            if chunk.contains(where: { $0 != 0xFF }) {
+                tailErased = false
+                break
+            }
+        }
+        guard tailErased else { return nil }
+
+        let trimmedPath = firmwarePath + ".trimmed-\(flashBytes)"
+        try fileManager.removeItem(atPath: trimmedPath)
+        try fileManager.copyItem(atPath: firmwarePath, toPath: trimmedPath)
+        let outHandle = try FileHandle(forWritingTo: URL(fileURLWithPath: trimmedPath))
+        defer { try? outHandle.closeFile() }
+        try outHandle.truncate(atOffset: UInt64(flashBytes))
+        return trimmedPath
+    }
+
     func exportFirmware(port: String, macAddress: String, outputDirectory: String) async throws -> Firmware {
         guard acquireDeviceLock(port: port) else {
             throw ESPToolError.deviceBusy
@@ -420,16 +472,19 @@ class ESPToolService: ObservableObject {
         let outputPath = (expandedPath as NSString).appendingPathComponent(fileName)
         progressMessage = "正在读取固件..."
 
+        // 按探测到的真实容量读取；探测失败时退回 8MB。
+        let exportBytes = (await detectFlashSizeBytes(port: port)) ?? flashSize
+
         // 使用 esptool 读取固件
         let result = try await runCommandWithProgress(
             [
                 "--port", port,
                 "read-flash",
                 "0x0",
-                "0x800000",
+                String(format: "0x%llX", exportBytes),
                 outputPath
             ],
-            totalBytes: flashSize,
+            totalBytes: exportBytes,
             timeout: flashOperationTimeout
         )
 
@@ -461,12 +516,32 @@ class ESPToolService: ObservableObject {
             progressMessage = ""
         }
 
+        // 文件超过设备真实容量时：超出部分全为 0xFF 才截断写入，否则拒绝
+        let fileManager = FileManager.default
+        var effectivePath = firmwarePath
+        if let flashBytes = await detectFlashSizeBytes(port: port) {
+            guard let trimmed = try trimFirmwareIfNeeded(
+                firmwarePath: firmwarePath,
+                fileManager: fileManager,
+                flashBytes: flashBytes
+            ) else {
+                throw ESPToolError.commandFailed(
+                    "固件文件超过设备 flash 容量（\(flashBytes / 1024 / 1024)MB），"
+                    + "且超出部分含非 0xFF 数据，无法安全写入。请确认固件与设备是否匹配。"
+                )
+            }
+            effectivePath = trimmed
+            if trimmed != firmwarePath {
+                print("固件超出设备 flash 容量，超出部分为擦除态，已截断为 \(flashBytes / 1024 / 1024)MB 写入: \(trimmed)")
+            }
+        }
+
         let result = try await runCommandWithProgress(
             [
                 "--port", port,
                 "write-flash",
                 "0x0",
-                firmwarePath
+                effectivePath
             ],
             totalBytes: flashSize,
             timeout: flashOperationTimeout
@@ -474,6 +549,11 @@ class ESPToolService: ObservableObject {
 
         guard result.exitCode == 0 else {
             throw ESPToolError.commandFailed(result.stderr)
+        }
+
+        // 写入成功后清理截断产生的临时文件
+        if effectivePath != firmwarePath {
+            try? fileManager.removeItem(atPath: effectivePath)
         }
 
         progressMessage = "固件写入完成"

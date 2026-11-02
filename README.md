@@ -4,10 +4,11 @@
 
 ## 功能特性
 
-- **固件导出**: 读取设备完整固件（8MB）并保存为镜像文件
-- **固件导入**: 将固件镜像刷入设备
+- **固件导出**: 读取设备完整固件（按探测到的实际 flash 容量，默认 8MB）并保存为镜像文件
+- **固件导入**: 将固件镜像刷入设备；文件超过设备 flash 容量时，若超出部分全为擦除态（0xFF）则自动截断后写入，否则拒绝写入以保证安全
 - **固件管理**: 展示已导出固件列表，支持导入和删除
 - **固件广场**: 内嵌网页访问固件下载
+- **网页版工具**: 浏览器中直接刷写固件，无需安装 Python（见下文「网页版」）
 
 ## 系统要求
 
@@ -90,6 +91,25 @@ python3 esp32_firmware_cli.py import ./firmware.bin -p /dev/cu.usbmodem101 -y
 - homebrew 安装路径
 - 系统 PATH 中的 esptool
 
+### flash 容量自适应与安全截断
+
+工具不再固定读写 8MB，而是通过 `esptool flash-id` 探测设备真实 flash 容量：
+
+- **导出**：按探测到的实际容量读取；探测失败时退回 8MB 并给出警告。
+  固定读 8MB 会在小容量设备上读到地址回卷的无效数据。
+- **导入**：固件文件超过设备真实容量时，检查超出部分是否全为 0xFF（擦除态）：
+  - 全为 0xFF：截断为设备容量后写入（避免 esptool 的
+    "doesn't fit in the available flash" 报错）；
+  - 含非 0xFF 数据：拒绝写入，提示确认固件与设备是否匹配。
+
+### 网页版工具
+
+`esp32_firmware_web.html` 是一个零依赖的单文件网页，基于 Web Serial API
+在浏览器内完成 ESP32 固件的擦除、写入与读取，无需安装 Python 或 esptool。
+
+使用方法：用 Chrome/Edge 打开该文件，点击连接设备，授权串口访问后即可操作。
+（要求浏览器支持 Web Serial，macOS 上 Chrome/Edge 均可。）
+
 ### 设备独占
 
 ESP32 串口同一时刻只能被一个 esptool 进程独占。App 与命令行工具共用同一把跨进程锁
@@ -141,6 +161,8 @@ ESP32-manager/
 │   │   └── Models/            # 数据模型
 │   ├── Resources/             # 资源文件
 │   └── project.yml            # XcodeGen 配置
+├── esp32_firmware_cli.py      # 命令行工具
+├── esp32_firmware_web.html    # 网页版刷写工具 (Web Serial)
 └── README.md
 ```
 

@@ -37,6 +37,15 @@ ESPTOOL_PATHS = [
 # 默认固件大小 (8MB for ESP32-C3)
 DEFAULT_FLASH_SIZE = 0x800000
 
+
+def _parse_flash_size(size_str):
+    """把 flash-id 输出的 "8MB"/"512KB" 解析成字节数；解析失败返回 0"""
+    import re
+    m = re.match(r"^\s*(\d+)\s*(MB|KB)\s*$", str(size_str), re.IGNORECASE)
+    if not m:
+        return 0
+    return int(m.group(1)) * (1024 * 1024 if m.group(2).upper() == "MB" else 1024)
+
 # 设备独占锁目录。
 #
 # ESP32 串口同一时刻只能被一个 esptool 进程独占。两个进程同时打开同一端口，
@@ -257,11 +266,18 @@ def _export_firmware_locked(esptool, port, output_dir, skip_confirm):
             print("已取消")
             return False
 
-    print(f"\n正在读取固件 ({DEFAULT_FLASH_SIZE // (1024*1024)}MB)...")
+    # 按探测到的真实容量导出；探测失败时退回 8MB。
+    # 固定读 8MB 会在小容量设备上读到地址回卷的无效数据，
+    # 回写时还会触发 esptool 的 "doesn't fit in the available flash" 报错。
+    flash_bytes = _parse_flash_size(device_info["flash_size"]) or DEFAULT_FLASH_SIZE
+    if not _parse_flash_size(device_info["flash_size"]):
+        print("警告: 未能解析 flash 容量，按 8MB 导出。", file=sys.stderr)
+
+    print(f"\n正在读取固件 ({flash_bytes // (1024*1024)}MB)...")
 
     try:
         result = subprocess.run(
-            [esptool, "--port", port, "read-flash", "0x0", hex(DEFAULT_FLASH_SIZE), output_path],
+            [esptool, "--port", port, "read-flash", "0x0", hex(flash_bytes), output_path],
             capture_output=True,
             text=True
         )
@@ -320,6 +336,34 @@ def _import_firmware_locked(esptool, port, firmware_path, skip_confirm):
 
     chip_type = device_info["chip_type"]
     file_size = os.path.getsize(firmware_path)
+    flash_bytes = _parse_flash_size(device_info["flash_size"])
+
+    # 设备真实容量小于文件时：超出部分全为 0xFF（擦除态）才截断写入，否则拒绝
+    if flash_bytes and file_size > flash_bytes:
+        print(f"警告: 固件文件 ({file_size / (1024*1024):.2f} MB) 超过设备 flash 容量 "
+              f"({flash_bytes // (1024*1024)} MB)，检查超出部分…", file=sys.stderr)
+        with open(firmware_path, "rb") as f:
+            f.seek(flash_bytes)
+            tail_erased = all(
+                chunk == b"\xff" * len(chunk)
+                for chunk in iter(lambda: f.read(65536), b"")
+            )
+        if not tail_erased:
+            print(f"错误: 固件文件超过设备 flash 容量，且超出部分含非 0xFF 数据，"
+                  f"无法安全写入。请确认固件与设备是否匹配。", file=sys.stderr)
+            return False
+        trimmed_path = firmware_path + f".trimmed_{flash_bytes}"
+        with open(firmware_path, "rb") as src, open(trimmed_path, "wb") as dst:
+            remaining = flash_bytes
+            while remaining > 0:
+                chunk = src.read(min(65536, remaining))
+                if not chunk:
+                    break
+                dst.write(chunk)
+                remaining -= len(chunk)
+        print(f"超出部分全为擦除态 (0xFF)，已截断为 {flash_bytes // (1024*1024)} MB 写入: {trimmed_path}")
+        firmware_path = trimmed_path
+        file_size = flash_bytes
 
     print(f"设备信息:")
     print(f"  芯片类型: {chip_type}")
